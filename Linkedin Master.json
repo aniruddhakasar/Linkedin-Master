@@ -1,0 +1,718 @@
+{
+  "name": "Linkedin Master",
+  "nodes": [
+    {
+      "parameters": {
+        "operation": "sendAndWait",
+        "sendTo": "aniruddhakasae2001@gmail.com",
+        "subject": "Linkedin post for today ",
+        "message": "=Title: {{$json.parsed.title}}\n\nContent: {{$json.parsed.text}}\n\nRespond\n",
+        "responseType": "customForm",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "Approval ",
+              "fieldType": "dropdown",
+              "fieldOptions": {
+                "values": [
+                  {
+                    "option": "Approve"
+                  },
+                  {
+                    "option": "Reject"
+                  }
+                ]
+              },
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Reason for rejection"
+            }
+          ]
+        },
+        "options": {
+          "limitWaitTime": {
+            "values": {
+              "resumeAmount": 45,
+              "resumeUnit": "minutes"
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        -1248,
+        336
+      ],
+      "id": "a9a3fc79-a906-4263-a9a4-2f1b660a401b",
+      "name": "Send message and wait for response",
+      "webhookId": "ebe0ced3-3540-4aae-8ffe-3fa5b64d62d0",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "fbVlqPVJNnmOnp5E",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "postAs": "=person",
+        "person": "Y-E29pgskJ",
+        "text": "={{ $('Code in JavaScript1').item.json.parsed.title }}\n\n\n{{ $('Code in JavaScript1').item.json.parsed.text }}",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.linkedIn",
+      "typeVersion": 1,
+      "position": [
+        -640,
+        320
+      ],
+      "id": "a16da239-67dc-42f4-a839-d0f34d0ba616",
+      "name": "Create a post",
+      "credentials": {
+        "linkedInOAuth2Api": {
+          "id": "h9QIfIrNPqjLiK9E",
+          "name": "LinkedIn account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.data[\"Approval \"] }}",
+                    "rightValue": "=Approve",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "a31c9c4a-1883-401e-b4ec-c98b0b7ac320"
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "e045e03c-0310-48cf-ac04-c12e9e3f55ea",
+                    "leftValue": "={{ $json.data[\"Approval \"] }}",
+                    "rightValue": "Approve",
+                    "operator": {
+                      "type": "string",
+                      "operation": "notEquals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.3,
+      "position": [
+        -944,
+        336
+      ],
+      "id": "f0bf830b-5adf-4de2-8cce-6afbe5af14bc",
+      "name": "Switch"
+    },
+    {
+      "parameters": {
+        "model": "openai/gpt-oss-120b",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGroq",
+      "typeVersion": 1,
+      "position": [
+        -848,
+        784
+      ],
+      "id": "7ff05501-bb96-4f97-a460-8c9bf05daea3",
+      "name": "Groq Chat Model1",
+      "credentials": {
+        "groqApi": {
+          "id": "QmiXS81FqfXYZ3j2",
+          "name": "Groq account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Resilient JSON parser for n8n Code node\nfunction tryParseJson(str) {\n  try {\n    return { ok: true, parsed: JSON.parse(str) };\n  } catch (e) {\n    return { ok: false, error: e.message };\n  }\n}\n\nfunction cleanString(s) {\n  if (typeof s !== \"string\") return s;\n  // normalize smart quotes, remove code fences, trim\n  s = s.replace(/```json|```/g, \"\");\n  s = s.replace(/[“”]/g, '\"').replace(/[‘’]/g, \"'\");\n  // remove stray control characters except newline/tab\n  s = s.replace(/[\\u0000-\\u0008\\u000B\\u000C\\u000E-\\u001F]/g, \"\");\n  // remove trailing commas before } or ]\n  s = s.replace(/,(\\s*[}\\]])/g, \"$1\");\n  return s.trim();\n}\n\nfunction extractLargestJsonSubstring(s) {\n  // find all substrings that start with { and end with }\n  let candidates = [];\n  for (let i = 0; i < s.length; i++) {\n    if (s[i] !== \"{\") continue;\n    let depth = 0;\n    for (let j = i; j < s.length; j++) {\n      if (s[j] === \"{\") depth++;\n      else if (s[j] === \"}\") {\n        depth--;\n        if (depth === 0) {\n          candidates.push(s.slice(i, j + 1));\n          break;\n        }\n      }\n    }\n  }\n  // fallback: if none found, try from first { to end\n  if (candidates.length === 0) {\n    const first = s.indexOf(\"{\");\n    if (first !== -1) return s.slice(first);\n    return null;\n  }\n  // return longest candidate\n  candidates.sort((a,b)=>b.length-a.length);\n  return candidates[0];\n}\n\nfunction balanceBraces(s) {\n  const opens = (s.match(/{/g) || []).length;\n  const closes = (s.match(/}/g) || []).length;\n  if (opens > closes) {\n    return s + \"}\".repeat(opens - closes);\n  }\n  return s;\n}\n\n// Gather possible fields to try\nconst input = $input.first();\nconst candidates = [];\n\n// push common locations\nconst maybePaths = [\n  input?.json?.output,\n  input?.json?.text,\n  input?.json?.response,\n  input?.json?.result,\n  input?.json?.data,\n  input?.json?.choices,\n  input?.json?.completion,\n  input?.json?.body,\n  input?.json\n];\n\nfor (const p of maybePaths) {\n  if (p === undefined || p === null) continue;\n  if (typeof p === \"object\") {\n    // stringify objects\n    candidates.push(JSON.stringify(p));\n  } else if (typeof p === \"string\") {\n    candidates.push(p);\n  }\n}\n\n// also try the raw input dump\ntry { candidates.push(JSON.stringify(input)); } catch(e){}\n\n// attempt parsing candidates\nlet final = null;\nlet diagnostics = [];\n\nfor (let rawCandidate of candidates) {\n  if (!rawCandidate || typeof rawCandidate !== \"string\") continue;\n  let cleaned = cleanString(rawCandidate);\n  // If looks like JSON object inside, extract it\n  let extracted = extractLargestJsonSubstring(cleaned) || cleaned;\n  // try parse as-is\n  let attempt = tryParseJson(extracted);\n  if (!attempt.ok) {\n    // try balancing braces then parse\n    let balanced = balanceBraces(extracted);\n    attempt = tryParseJson(balanced);\n    if (attempt.ok) {\n      final = attempt.parsed;\n      diagnostics.push({ sourceSample: extracted.slice(0,300), method: \"balanced\" });\n      break;\n    }\n  } else {\n    final = attempt.parsed;\n    diagnostics.push({ sourceSample: extracted.slice(0,300), method: \"direct\" });\n    break;\n  }\n  diagnostics.push({ sourceSample: extracted.slice(0,300), error: attempt.error });\n}\n\n// Return result or detailed error\nif (final) {\n  return [{ json: { ok: true, parsed: final, diagnostics } }];\n} else {\n  // helpful debug info for you to paste back to LLM or inspect\n  return [{\n    json: {\n      ok: false,\n      error: \"Could not parse JSON from any candidate. See diagnostics.\",\n      diagnostics,\n      // include the raw 'output' sample that you showed earlier for easier debugging:\n      received: input?.json?.output ?? input?.json?.text ?? input?.json\n    }\n  }];\n}\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1616,
+        336
+      ],
+      "id": "e6234aa3-8976-4c57-b9e6-89d8884b39b5",
+      "name": "Code in JavaScript1"
+    },
+    {
+      "parameters": {
+        "maxItems": 10
+      },
+      "type": "n8n-nodes-base.limit",
+      "typeVersion": 1,
+      "position": [
+        -2432,
+        336
+      ],
+      "id": "4cb81bf4-3207-48b7-9111-63c8d602f77f",
+      "name": "Limit"
+    },
+    {
+      "parameters": {
+        "sortFieldsUi": {
+          "sortField": [
+            {
+              "fieldName": "isoDate",
+              "order": "descending"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.sort",
+      "typeVersion": 1,
+      "position": [
+        -2864,
+        336
+      ],
+      "id": "d5f817fc-542f-4588-b6f2-66cd252e0ef4",
+      "name": "Sort"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "522a35b0-d204-4a3b-b993-2609ff63f985",
+              "leftValue": "={{$json[\"title\"]}}",
+              "rightValue": "/(ai|artificial intelligence|machine learning|deep learning|data science|neural network|neural networks|nlp|natural language processing|computer vision|cv|genai|generative ai|transformer|gpt|bert|llm|agentic ai|autonomous agent|autonomous agents|openai|chatgpt|langchain|rpa|automation|predictive analytics|reinforcement learning|supervised learning|unsupervised learning|data analytics|data engineering|big data|mlops|model training|ai model)/i",
+              "operator": {
+                "type": "string",
+                "operation": "regex"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.2,
+      "position": [
+        -2640,
+        336
+      ],
+      "id": "13ce0164-74e4-43e6-be06-5887aa6a28e3",
+      "name": "Filter"
+    },
+    {
+      "parameters": {
+        "numberInputs": 5
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        -3088,
+        288
+      ],
+      "id": "8a32e96a-9430-4234-ba82-6b7d41adbca4",
+      "name": "Merge"
+    },
+    {
+      "parameters": {
+        "url": "https://www.technologyreview.com/feed/",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1.2,
+      "position": [
+        -3488,
+        704
+      ],
+      "id": "c09f31ec-dc10-4120-b21c-1a6ba61439cc",
+      "name": "RSS Read4"
+    },
+    {
+      "parameters": {
+        "url": "https://venturebeat.com/category/ai/feed/",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1.2,
+      "position": [
+        -3488,
+        560
+      ],
+      "id": "839b5bff-9665-4e16-beed-2ca02366dc13",
+      "name": "RSS Read3"
+    },
+    {
+      "parameters": {
+        "url": "https://blog.google/technology/ai/rss/",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1.2,
+      "position": [
+        -3472,
+        432
+      ],
+      "id": "f2dca80e-eb92-48b2-a372-a26b2060cc0f",
+      "name": "RSS Read2"
+    },
+    {
+      "parameters": {
+        "url": "https://www.kdnuggets.com/feed",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1.2,
+      "position": [
+        -3472,
+        304
+      ],
+      "id": "fb32abf5-23b1-4509-b439-3c288153f9c7",
+      "name": "RSS Read1"
+    },
+    {
+      "parameters": {
+        "aggregate": "aggregateAllItemData",
+        "include": "specifiedFields",
+        "fieldsToInclude": "title, link, contentSnippet",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.aggregate",
+      "typeVersion": 1,
+      "position": [
+        -2224,
+        336
+      ],
+      "id": "d00ab1a8-0eec-448c-aa62-b4303027f372",
+      "name": "Aggregate"
+    },
+    {
+      "parameters": {
+        "model": "openai/gpt-oss-120b",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGroq",
+      "typeVersion": 1,
+      "position": [
+        -2096,
+        576
+      ],
+      "id": "82b4e88b-2924-456b-bd95-ddbcca6a2561",
+      "name": "Groq Chat Model",
+      "credentials": {
+        "groqApi": {
+          "id": "QmiXS81FqfXYZ3j2",
+          "name": "Groq account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "https://towardsdatascience.com/feed",
+        "options": {
+          "customFields": ""
+        }
+      },
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1.2,
+      "position": [
+        -3472,
+        176
+      ],
+      "id": "d7e304b0-0125-464c-bcc7-dc6ebabd5716",
+      "name": "RSS Read"
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 8
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -3808,
+        336
+      ],
+      "id": "a2f0a075-ee5b-4fb2-9135-120b531cd16e",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=You MUST always output meaningful content. \nDo NOT leave any field empty.\n\nIf no valid RSS articles are found in {{$json.data}}, then create an original AI industry insight post instead.\n\nYou will receive:\n- Article list under {{$json.data}}\n- Previously saved posts under {{$json.db_rows}}\n- chat_memory table existence under {{$json.memory_check}}\n\nYour tasks:\n\n1. MEMORY TABLE SQL:\n   - If {{$json.memory_check}} is false → return the SQL to create the table.\n   - If true → return an empty string.\n   Required schema:\n     CREATE TABLE IF NOT EXISTS chat_memory (\n       id INTEGER PRIMARY KEY AUTOINCREMENT,\n       title TEXT NOT NULL,\n       content TEXT NOT NULL,\n       created_at DATETIME DEFAULT CURRENT_TIMESTAMP\n     );\n\n2. ARTICLE SELECTION:\n   - If {{$json.data}} contains items → choose the strongest one NOT found in {{$json.db_rows}}.\n   - If NO valid items exist → generate an original post topic about a major AI/ML trend.\n\n3. LINKEDIN POST CREATION:\n   - Generate:\n     • Non-empty Unicode-bold title  \n     • Non-empty text (150–220 words)  \n     • 2–3 rhythm lines (emoji-led or dash-led)  \n     • Natural use of max 3 emojis  \n     • db_save.title and db_save.content must not be empty  \n   - At the END of the post, include **12–15 trending hashtags**, relevant to the post theme (AI, ML, automation, generative AI, LLMs, tech trends, digital transformation, etc.)\n\n4. Output STRICT JSON ONLY:\n{\n  \"title\": \"𝐁𝐨𝐥𝐝 𝐓𝐢𝐭𝐥𝐞\",\n  \"text\": \"Full LinkedIn post with 12–15 relevant hashtags at the end\",\n  \"db_save\": {\n    \"title\": \"Selected or generated title\",\n    \"content\": \"Same LinkedIn post content\"\n  },\n  \"memory_table_sql\": \"<SQL or empty>\"\n}\n\nRules:\n- All fields must contain non-empty values.\n- Never leave any field empty.\n- Never output placeholders.\n- Never output markdown symbols.\n- Output valid JSON ONLY.\n",
+        "hasOutputParser": true,
+        "options": {
+          "systemMessage": "You are an expert news analyst. Your task is to summarize the provided article into a single, concise paragraph (max 4 sentences). Do not include any introductory or concluding remarks"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3,
+      "position": [
+        -1984,
+        336
+      ],
+      "id": "d7ac8aa0-69dd-42e0-888a-7d8bcb0919e3",
+      "name": "AI Agent"
+    },
+    {
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "={{ $json.data[0].title }}{{ $json.data[0].link }}"
+      },
+      "type": "@n8n/n8n-nodes-langchain.memoryPostgresChat",
+      "typeVersion": 1.3,
+      "position": [
+        -1968,
+        560
+      ],
+      "id": "35e9f7eb-848a-4583-8a80-480b0d02ae4d",
+      "name": "Postgres Chat Memory",
+      "credentials": {
+        "postgres": {
+          "id": "SGzclkstYtKCBirb",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=You MUST always output meaningful content. \nDo NOT leave any field empty.\n\nIf no valid RSS articles are found in {{$json.data}}, then create an original AI industry insight post instead.\n\nYou will receive:\n- Article list under {{$json.data}}\n- Previously saved posts under {{$json.db_rows}}\n- chat_memory table existence under {{$json.memory_check}}\n\nYour tasks:\n\n1. MEMORY TABLE SQL:\n   - If {{$json.memory_check}} is false → return the SQL to create the table.\n   - If true → return an empty string.\n   Required schema:\n     CREATE TABLE IF NOT EXISTS chat_memory (\n       id INTEGER PRIMARY KEY AUTOINCREMENT,\n       title TEXT NOT NULL,\n       content TEXT NOT NULL,\n       created_at DATETIME DEFAULT CURRENT_TIMESTAMP\n     );\n\n2. ARTICLE SELECTION:\n   - If {{$json.data}} contains items → choose the strongest one NOT found in {{$json.db_rows}}.\n   - If NO valid items exist → generate an original post topic about a major AI/ML trend.\n\n3. LINKEDIN POST CREATION:\n   - Generate:\n     • Non-empty Unicode-bold title  \n     • Non-empty text (150–220 words)  \n     • 2–3 rhythm lines (emoji-led or dash-led)  \n     • Natural use of max 3 emojis  \n     • db_save.title and db_save.content must not be empty  \n   - At the END of the post, include **12–15 trending hashtags**, relevant to the post theme (AI, ML, automation, generative AI, LLMs, tech trends, digital transformation, etc.)\n\n4. Output STRICT JSON ONLY:\n{\n  \"title\": \"𝐁𝐨𝐥𝐝 𝐓𝐢𝐭𝐥𝐞\",\n  \"text\": \"Full LinkedIn post with 12–15 relevant hashtags at the end\",\n  \"db_save\": {\n    \"title\": \"Selected or generated title\",\n    \"content\": \"Same LinkedIn post content\"\n  },\n  \"memory_table_sql\": \"<SQL or empty>\"\n}\n\nRules:\n- All fields must contain non-empty values.\n- Never leave any field empty.\n- Never output placeholders.\n- Never output markdown symbols.\n- Output valid JSON ONLY.\n",
+        "hasOutputParser": true,
+        "options": {
+          "systemMessage": "You are an expert news analyst. Your task is to summarize the provided article into a single, concise paragraph (max 4 sentences). Do not include any introductory or concluding remarks"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3,
+      "position": [
+        -832,
+        544
+      ],
+      "id": "507e9d8a-32f2-4f57-8152-8fe3f1163618",
+      "name": "AI Agent1"
+    },
+    {
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "={{ $json.data[0].title }}{{ $json.data[0].link }}"
+      },
+      "type": "@n8n/n8n-nodes-langchain.memoryPostgresChat",
+      "typeVersion": 1.3,
+      "position": [
+        -720,
+        816
+      ],
+      "id": "55950de7-fc82-46d0-9468-f32a65a7ff60",
+      "name": "Postgres Chat Memory1",
+      "credentials": {
+        "postgres": {
+          "id": "SGzclkstYtKCBirb",
+          "name": "Postgres account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Send message and wait for response": {
+      "main": [
+        [
+          {
+            "node": "Switch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch": {
+      "main": [
+        [
+          {
+            "node": "Create a post",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "AI Agent1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Groq Chat Model1": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent1",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript1": {
+      "main": [
+        [
+          {
+            "node": "Send message and wait for response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Limit": {
+      "main": [
+        [
+          {
+            "node": "Aggregate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sort": {
+      "main": [
+        [
+          {
+            "node": "Filter",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter": {
+      "main": [
+        [
+          {
+            "node": "Limit",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge": {
+      "main": [
+        [
+          {
+            "node": "Sort",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "RSS Read4": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 4
+          }
+        ]
+      ]
+    },
+    "RSS Read3": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 3
+          }
+        ]
+      ]
+    },
+    "RSS Read2": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 2
+          }
+        ]
+      ]
+    },
+    "RSS Read1": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Aggregate": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Groq Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "RSS Read": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "RSS Read4",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "RSS Read3",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "RSS Read2",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "RSS Read1",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "RSS Read",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Postgres Chat Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent1": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Postgres Chat Memory1": {
+      "ai_memory": [
+        [
+          {
+            "node": "AI Agent1",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "299c61a2-f3d5-4f69-a184-de521ed09527",
+  "meta": {
+    "instanceId": "995553cae7d71038126c97cd0969352ada41519213199e1633aab612966f69b8"
+  },
+  "id": "6hOaE4q5T2wXfEPx",
+  "tags": []
+}
